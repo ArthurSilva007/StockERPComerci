@@ -1,0 +1,32 @@
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Java / Maven build output
+target/
+build/
+out/
+
+# Logs and runtime files
+*.log
+logs/
+hs_err_pid*
+
+# Local Docker data
+docker-data/
+
+# Certificates and private keys
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
