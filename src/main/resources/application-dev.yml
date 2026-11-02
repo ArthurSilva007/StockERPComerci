@@ -1,0 +1,4 @@
+logging:
+  level:
+    com.nexerp: DEBUG
+    org.flywaydb: INFO

@@ -1,0 +1,9 @@
+server:
+  forward-headers-strategy: framework
+logging:
+  level:
+    root: INFO
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
