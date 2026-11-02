@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: nexerp
+
+  profiles:
+    default: dev
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/nexerp}
+    username: ${DB_USER:user}
+    password: ${DB_PASSWORD:1234}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+
+  sql:
+    init:
+      mode: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+
+nexerp:
+  security:
+    jwt:
+      signing-key: ${JWT_SIGNING_KEY:dev-only-key-change-this-value-1234567890}
+      issuer: ${JWT_ISSUER:nexerp}
+      access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
