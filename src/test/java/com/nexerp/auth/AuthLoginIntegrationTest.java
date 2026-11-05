@@ -163,7 +163,10 @@ class AuthLoginIntegrationTest {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO UPDATE SET
                     senha_hash = EXCLUDED.senha_hash,
-                    status = EXCLUDED.status
+                    status = EXCLUDED.status,
+                    tentativas_falhas = EXCLUDED.tentativas_falhas,
+                    bloqueado_ate = EXCLUDED.bloqueado_ate,
+                    ultimo_login_em = EXCLUDED.ultimo_login_em
                 """,
                 USUARIO_ID,
                 TENANT_ID,
@@ -341,6 +344,50 @@ class AuthLoginIntegrationTest {
                                         """.formatted(USUARIO_EMAIL, USUARIO_SENHA))
                 )
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void cincoSenhasInvalidasBloqueiamUsuario()
+            throws Exception {
+        String senhaInvalida = "senha-incorreta";
+
+        for (int tentativa = 0; tentativa < 5; tentativa++) {
+            mockMvc
+                    .perform(
+                            post("/api/v1/auth/login")
+                                    .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content("""
+                                            {
+                                              "email": "%s",
+                                              "senha": "%s"
+                                            }
+                                            """.formatted(USUARIO_EMAIL, senhaInvalida))
+                    )
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "email": "%s",
+                                          "senha": "%s"
+                                        }
+                                        """.formatted(USUARIO_EMAIL, USUARIO_SENHA))
+                )
+                .andExpect(status().isUnauthorized());
+
+        Integer tentativas = jdbcTemplate.queryForObject(
+                "SELECT tentativas_falhas FROM usuario WHERE id = ?",
+                Integer.class,
+                USUARIO_ID
+        );
+
+        assertThat(tentativas).isEqualTo(5);
     }
 
     private static Timestamp agora() {

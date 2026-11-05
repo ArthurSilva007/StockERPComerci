@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -27,6 +28,8 @@ import java.util.UUID;
 public class AuthService {
 
     private static final String CREDENCIAIS_INVALIDAS = "Credenciais inválidas";
+    private static final short LIMITE_TENTATIVAS = 5;
+    private static final Duration DURACAO_BLOQUEIO = Duration.ofMinutes(15);
 
     private final JdbcTemplate jdbcTemplate;
     private final UsuariosRepository usuariosRepository;
@@ -146,24 +149,32 @@ public class AuthService {
              Usuario usuario,
              String senha
      ) {
-        boolean bloqueado =
-                usuario.getBloqueadoAte() !=null
-                && usuario
-                        .getBloqueadoAte()
-                        .isAfter(Instant.now());
+        Instant agora = Instant.now();
+        boolean bloqueado = usuario.getBloqueadoAte() != null
+                && usuario.getBloqueadoAte().isAfter(agora);
+
+        if (!"Ativo".equalsIgnoreCase(usuario.getStatus()) || bloqueado) {
+            throw credenciaisInvalidas();
+        }
 
         boolean senhaValida = passwordEncoder.matches(
                 senha,
                 usuario.getSenhaHash()
 
         );
-        boolean usuarioAtivo =
-         "Ativo".equalsIgnoreCase(usuario.getStatus());
 
-        if (!usuarioAtivo || bloqueado || !senhaValida) {
+        if (!senhaValida) {
+            usuario.registrarFalhaDeLogin(
+                    agora,
+                    LIMITE_TENTATIVAS,
+                    agora.plus(DURACAO_BLOQUEIO)
+            );
+            usuariosRepository.save(usuario);
             throw credenciaisInvalidas();
         }
 
+        usuario.registrarLoginComSucesso(agora);
+        usuariosRepository.save(usuario);
      }
 
      private ResponseStatusException credenciaisInvalidas(){

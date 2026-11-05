@@ -106,5 +106,27 @@ public class Usuario {
     public Instant getUltimoLoginEm() {
         return ultimoLoginEm;
     }
+
+    public void registrarFalhaDeLogin(
+            Instant agora,
+            short limiteTentativas,
+            Instant bloqueadoAte
+    ) {
+        tentativasFalhas++;
+        atualizadoEm = agora;
+
+        if (tentativasFalhas >= limiteTentativas) {
+            status = "BLOQUEADO";
+            this.bloqueadoAte = bloqueadoAte;
+        }
+    }
+
+    public void registrarLoginComSucesso(Instant agora) {
+        tentativasFalhas = 0;
+        bloqueadoAte = null;
+        ultimoLoginEm = agora;
+        atualizadoEm = agora;
+        status = "ATIVO";
+    }
 }
 
