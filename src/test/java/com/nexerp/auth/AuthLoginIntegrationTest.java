@@ -41,6 +41,9 @@ class AuthLoginIntegrationTest {
     private static final UUID EMPRESA_ID =
             UUID.fromString("22222222-2222-2222-2222-222222222222");
 
+    private static final UUID EMPRESA_SEM_ACESSO_ID =
+            UUID.fromString("55555555-5555-5555-5555-555555555555");
+
     private static final UUID USUARIO_ID =
             UUID.fromString("33333333-3333-3333-3333-333333333333");
 
@@ -111,6 +114,24 @@ class AuthLoginIntegrationTest {
                 "Empresa Login Teste LTDA",
                 "Empresa Login Teste",
                 "12345678000195",
+                agora(),
+                agora()
+        );
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO empresa (
+                    id, tenant_id, razao_social, nome_fantasia,
+                    cnpj, criado_em, atualizado_em
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                EMPRESA_SEM_ACESSO_ID,
+                TENANT_ID,
+                "Empresa Sem Acesso LTDA",
+                "Empresa Sem Acesso",
+                "98765432000195",
                 agora(),
                 agora()
         );
@@ -243,6 +264,26 @@ class AuthLoginIntegrationTest {
                 .perform(
                         post("/api/v1/auth/login")
                                 .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body)
+                )
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void empresaSemVinculoDoUsuarioRetornaNaoAutorizado()
+            throws Exception {
+        String body = """
+                {
+                  "email": "%s",
+                  "senha": "%s"
+                }
+                """.formatted(USUARIO_EMAIL, USUARIO_SENHA);
+
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .header("X-Empresa-Id", EMPRESA_SEM_ACESSO_ID.toString())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(body)
                 )
