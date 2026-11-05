@@ -290,6 +290,59 @@ class AuthLoginIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void emailInvalidoRetornaBadRequest()
+            throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "email": "email-invalido",
+                                          "senha": "%s"
+                                        }
+                                        """.formatted(USUARIO_SENHA))
+                )
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void senhaVaziaRetornaBadRequest()
+            throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "email": "%s",
+                                          "senha": ""
+                                        }
+                                        """.formatted(USUARIO_EMAIL))
+                )
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void empresaHeaderAusenteRetornaBadRequest()
+            throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "email": "%s",
+                                          "senha": "%s"
+                                        }
+                                        """.formatted(USUARIO_EMAIL, USUARIO_SENHA))
+                )
+                .andExpect(status().isBadRequest());
+    }
+
     private static Timestamp agora() {
         return Timestamp.from(Instant.now());
     }
