@@ -236,6 +236,8 @@ class AuthLoginIntegrationTest {
 
         assertThat(json.path("accessToken").asText())
                 .isNotBlank();
+        assertThat(json.path("refreshToken").asText())
+                .isNotBlank();
         assertThat(json.path("tokenType").asText())
                 .isEqualTo("Bearer");
         assertThat(json.path("expiresIn").asLong())
@@ -251,6 +253,146 @@ class AuthLoginIntegrationTest {
                 .isEqualTo(TENANT_ID.toString());
         assertThat(jwt.getClaimAsStringList("permissions"))
                 .contains("venda:criar");
+    }
+
+    @Test
+    void refreshTokenRevogaTokenAnterior() throws Exception {
+        String loginBody = """
+                {
+                  "email": "%s",
+                  "senha": "%s"
+                }
+                """.formatted(USUARIO_EMAIL, USUARIO_SENHA);
+
+        String loginResponse = mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(loginBody)
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String refreshTokenAnterior = objectMapper
+                .readTree(loginResponse)
+                .path("refreshToken")
+                .asText();
+
+        String refreshResponse = mockMvc
+                .perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "refreshToken": "%s"
+                                        }
+                                        """.formatted(refreshTokenAnterior))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String novoRefreshToken = objectMapper
+                .readTree(refreshResponse)
+                .path("refreshToken")
+                .asText();
+
+        assertThat(novoRefreshToken)
+                .isNotBlank();
+
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "refreshToken": "%s"
+                                        }
+                                        """.formatted(refreshTokenAnterior))
+                )
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void refreshTokenMalformadoRetornaNaoAutorizado()
+            throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "refreshToken": "token-malformado"
+                                        }
+                                        """)
+                )
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void refreshTokenVazioRetornaBadRequest()
+            throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "refreshToken": ""
+                                        }
+                                        """)
+                )
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refreshTokenNaoFicaArmazenadoEmTextoPuro()
+            throws Exception {
+        String loginResponse = mockMvc
+                .perform(
+                        post("/api/v1/auth/login")
+                                .header("X-Empresa-Id", EMPRESA_ID.toString())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "email": "%s",
+                                          "senha": "%s"
+                                        }
+                                        """.formatted(USUARIO_EMAIL, USUARIO_SENHA))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String refreshToken = objectMapper
+                .readTree(loginResponse)
+                .path("refreshToken")
+                .asText();
+
+        Integer plainTokenCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM refresh_token WHERE token_hash = ?",
+                Integer.class,
+                refreshToken
+        );
+
+        String storedHash = jdbcTemplate.queryForObject(
+                "SELECT token_hash FROM refresh_token "
+                        + "WHERE tenant_id = ? AND usuario_id = ? "
+                        + "ORDER BY criado_em DESC LIMIT 1",
+                String.class,
+                TENANT_ID,
+                USUARIO_ID
+        );
+
+        assertThat(plainTokenCount).isZero();
+        assertThat(storedHash)
+                .hasSize(64)
+                .isNotEqualTo(refreshToken);
     }
 
     @Test
