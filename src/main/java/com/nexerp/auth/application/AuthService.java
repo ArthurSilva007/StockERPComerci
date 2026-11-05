@@ -57,7 +57,7 @@ public class AuthService {
         this.jwtProperties = jwtProperties;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ResponseStatusException.class)
     public AuthLoginResponse login(
             UUID empresaId,
             AuthLoginRequest request
