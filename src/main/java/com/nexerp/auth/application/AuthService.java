@@ -3,8 +3,10 @@ package com.nexerp.auth.application;
 
 import com.nexerp.auth.api.AuthLoginRequest;
 import com.nexerp.auth.api.AuthLoginResponse;
+import com.nexerp.auth.domain.RefreshToken;
 import com.nexerp.auth.domain.PerfilPermissao;
 import com.nexerp.auth.infra.PerfilPermissaoRepository;
+import com.nexerp.auth.infra.RefreshTokenRepository;
 import com.nexerp.auth.infra.UsuarioEmpresaRepository;
 import com.nexerp.shared.security.JwtProperties;
 import com.nexerp.shared.security.JwtTokenService;
@@ -38,6 +40,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
     private final JwtProperties jwtProperties;
+    private final RefreshTokenCodec refreshTokenCodec;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     public AuthService (
             JdbcTemplate jdbcTemplate,
@@ -46,7 +50,9 @@ public class AuthService {
             PerfilPermissaoRepository perfilPermissaoRepository,
             PasswordEncoder passwordEncoder,
             JwtTokenService jwtTokenService,
-            JwtProperties jwtProperties
+            JwtProperties jwtProperties,
+            RefreshTokenCodec refreshTokenCodec,
+            RefreshTokenRepository refreshTokenRepository
     ){
         this.jdbcTemplate = jdbcTemplate;
         this.usuariosRepository = usuariosRepository;
@@ -55,6 +61,8 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenService = jwtTokenService;
         this.jwtProperties = jwtProperties;
+        this.refreshTokenCodec = refreshTokenCodec;
+        this.refreshTokenRepository = refreshTokenRepository;
     }
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
@@ -102,16 +110,113 @@ public class AuthService {
                 .sorted()
                 .toList();
 
-        String token = jwtTokenService.issueAccessToken(
+        return emitirTokens(usuario.getId(), tenantId, empresaId, permissoes);
+    }
+
+    @Transactional
+    public AuthLoginResponse refresh(String refreshToken) {
+        RefreshTokenCodec.TokenContext contexto =
+                refreshTokenCodec.parseContext(refreshToken);
+
+        configurarEmpresaParaLogin(contexto.empresaId());
+        configurarTenant(contexto.tenantId());
+
+        RefreshToken tokenAnterior = refreshTokenRepository
+                .findByTokenHashAndRevogadoEmIsNull(
+                        refreshTokenCodec.hash(refreshToken)
+                )
+                .filter(token -> token.getExpiraEm().isAfter(Instant.now()))
+                .filter(token -> token.getTenantId().equals(contexto.tenantId()))
+                .filter(token -> token.getEmpresaId().equals(contexto.empresaId()))
+                .orElseThrow(this::credenciaisInvalidas);
+
+        Usuario usuario = usuariosRepository.findById(tokenAnterior.getUsuarioId())
+                .orElseThrow(this::credenciaisInvalidas);
+
+        UsuarioEmpresa acessoEmpresa =
+                usuarioEmpresaRepository
+                        .findAllByTenantAndUsuario(
+                                contexto.tenantId(),
+                                usuario.getId()
+                        )
+                        .stream()
+                        .filter(acesso -> acesso.getId().getEmpresaId()
+                                .equals(contexto.empresaId()))
+                        .findFirst()
+                        .orElseThrow(this::credenciaisInvalidas);
+
+        List<String> permissoes = buscarPermissoes(acessoEmpresa);
+        String novoRefreshToken = refreshTokenCodec.issue(
+                contexto.tenantId(),
+                contexto.empresaId()
+        );
+        RefreshToken novoToken = refreshTokenRepository.save(
+                new RefreshToken(
+                        contexto.tenantId(),
+                        usuario.getId(),
+                        contexto.empresaId(),
+                        refreshTokenCodec.hash(novoRefreshToken),
+                        Instant.now().plus(
+                                Duration.ofDays(jwtProperties.getRefreshTokenDays())
+                        )
+                )
+        );
+        tokenAnterior.revogar(Instant.now(), novoToken.getId());
+        refreshTokenRepository.save(tokenAnterior);
+
+        String accessToken = jwtTokenService.issueAccessToken(
                 usuario.getId(),
-                tenantId,
+                contexto.tenantId(),
                 permissoes
         );
         return new AuthLoginResponse(
-                token,
+                accessToken,
                 "Bearer",
+                novoRefreshToken,
                 jwtProperties.getAccessTokenMinutes() * 60
         );
+    }
+
+    private AuthLoginResponse emitirTokens(
+            UUID usuarioId,
+            UUID tenantId,
+            UUID empresaId,
+            List<String> permissoes
+    ) {
+        String accessToken = jwtTokenService.issueAccessToken(
+                usuarioId,
+                tenantId,
+                permissoes
+        );
+        String refreshToken = refreshTokenCodec.issue(tenantId, empresaId);
+        refreshTokenRepository.save(
+                new RefreshToken(
+                        tenantId,
+                        usuarioId,
+                        empresaId,
+                        refreshTokenCodec.hash(refreshToken),
+                        Instant.now().plus(
+                                Duration.ofDays(jwtProperties.getRefreshTokenDays())
+                        )
+                )
+        );
+        return new AuthLoginResponse(
+                accessToken,
+                "Bearer",
+                refreshToken,
+                jwtProperties.getAccessTokenMinutes() * 60
+        );
+    }
+
+    private List<String> buscarPermissoes(UsuarioEmpresa acessoEmpresa) {
+        return perfilPermissaoRepository
+                .findAllByIdPerfilId(acessoEmpresa.getPerfilId())
+                .stream()
+                .map(PerfilPermissao::getId)
+                .map(id -> id.getPermissaoCodigo())
+                .distinct()
+                .sorted()
+                .toList();
     }
      private void configurarEmpresaParaLogin(UUID empresaId) {
         jdbcTemplate.queryForObject(

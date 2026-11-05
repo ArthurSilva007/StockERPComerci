@@ -16,6 +16,9 @@ public class JwtProperties {
     private String issuer;
 
     @Min(1)
+    private long refreshTokenDays = 30;
+
+    @Min(1)
     private long accessTokenMinutes = 15;
 
     public String getSigningKey() {
@@ -42,4 +45,11 @@ public class JwtProperties {
         this.accessTokenMinutes = accessTokenMinutes;
     }
 
+    public long getRefreshTokenDays() {
+        return refreshTokenDays;
+    }
+
+    public void setRefreshTokenDays(long refreshTokenDays) {
+        this.refreshTokenDays = refreshTokenDays;
+    }
 }

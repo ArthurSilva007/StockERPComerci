@@ -46,3 +46,4 @@ nexerp:
       signing-key: ${JWT_SIGNING_KEY:dev-only-key-change-this-value-1234567890}
       issuer: ${JWT_ISSUER:nexerp}
       access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
+      refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:30}

@@ -27,6 +27,9 @@ public class RefreshToken {
     @Column(name = "usuario_id", nullable = false)
     private UUID usuarioId;
 
+    @Column(name = "empresa_id")
+    private UUID empresaId;
+
     @Column(name = "token_hash", nullable = false, unique = true, length = 255)
     private String tokenHash;
 
@@ -45,9 +48,16 @@ public class RefreshToken {
     protected  RefreshToken() {
     }
 
-    public RefreshToken(UUID tenantId, UUID usuarioId, String tokenHash, Instant expiraEm) {
+    public RefreshToken(
+            UUID tenantId,
+            UUID usuarioId,
+            UUID empresaId,
+            String tokenHash,
+            Instant expiraEm
+    ) {
         this.tenantId = tenantId;
         this.usuarioId = usuarioId;
+        this.empresaId = empresaId;
         this.tokenHash = tokenHash;
         this.criadoEm = Instant.now();
         this.expiraEm = expiraEm;
@@ -63,6 +73,10 @@ public class RefreshToken {
 
     public UUID getUsuarioId() {
         return usuarioId;
+    }
+
+    public UUID getEmpresaId() {
+        return empresaId;
     }
 
     public String getTokenHash() {
@@ -83,5 +97,10 @@ public class RefreshToken {
 
     public UUID getSubstituidoPorId() {
         return substituidoPorId;
+    }
+
+    public void revogar(Instant momento, UUID substituidoPorId) {
+        this.revogadoEm = momento;
+        this.substituidoPorId = substituidoPorId;
     }
 }
