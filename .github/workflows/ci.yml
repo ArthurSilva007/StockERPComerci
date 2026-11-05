@@ -32,6 +32,8 @@ jobs:
 
   dependency-scan:
     runs-on: ubuntu-latest
+    env:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
     steps:
       - name: Checkout
@@ -45,9 +47,14 @@ jobs:
           cache: maven
 
       - name: OWASP Dependency-Check
+        if: ${{ env.NVD_API_KEY != '' }}
         run: >-
           mvn --batch-mode --no-transfer-progress
           org.owasp:dependency-check-maven:13.0.0:check
           -DskipTests
           -DfailBuildOnCVSS=7
-          -DnvdApiKey=${{ secrets.NVD_API_KEY }}
+          -DnvdApiKey=${NVD_API_KEY}
+
+      - name: Avisar que a analise foi ignorada sem NVD_API_KEY
+        if: ${{ env.NVD_API_KEY == '' }}
+        run: echo "::warning::Configure o secret NVD_API_KEY para executar o OWASP Dependency-Check."
