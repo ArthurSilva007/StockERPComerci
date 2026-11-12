@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -25,6 +26,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,11 +41,17 @@ class AuthLoginIntegrationTest {
     private static final UUID TENANT_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    private static final UUID OUTRO_TENANT_ID =
+            UUID.fromString("66666666-6666-6666-6666-666666666666");
+
     private static final UUID EMPRESA_ID =
             UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private static final UUID EMPRESA_SEM_ACESSO_ID =
             UUID.fromString("55555555-5555-5555-5555-555555555555");
+
+    private static final UUID EMPRESA_OUTRO_TENANT_ID =
+            UUID.fromString("77777777-7777-7777-7777-777777777777");
 
     private static final UUID USUARIO_ID =
             UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -102,6 +111,17 @@ class AuthLoginIntegrationTest {
 
         jdbcTemplate.update(
                 """
+                INSERT INTO tenant (id, nome, criado_em)
+                VALUES (?, ?, ?)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                OUTRO_TENANT_ID,
+                "Outro Tenant",
+                agora()
+        );
+
+        jdbcTemplate.update(
+                """
                 INSERT INTO empresa (
                     id, tenant_id, razao_social, nome_fantasia,
                     cnpj, criado_em, atualizado_em
@@ -114,6 +134,24 @@ class AuthLoginIntegrationTest {
                 "Empresa Login Teste LTDA",
                 "Empresa Login Teste",
                 "12345678000195",
+                agora(),
+                agora()
+        );
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO empresa (
+                    id, tenant_id, razao_social, nome_fantasia,
+                    cnpj, criado_em, atualizado_em
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                EMPRESA_OUTRO_TENANT_ID,
+                OUTRO_TENANT_ID,
+                "Empresa Outro Tenant LTDA",
+                "Empresa Outro Tenant",
+                "98765432000195",
                 agora(),
                 agora()
         );
@@ -208,6 +246,67 @@ class AuthLoginIntegrationTest {
                 "venda:criar",
                 agora()
         );
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO perfil_permissao (
+                    perfil_id, permissao_codigo, criado_em
+                )
+                VALUES (?, ?, ?)
+                ON CONFLICT (perfil_id, permissao_codigo) DO NOTHING
+                """,
+                PERFIL_ID,
+                "empresa:ler",
+                agora()
+        );
+    }
+
+    @Test
+    void empresasSemJwtRetornaNaoAutorizado() throws Exception {
+        mockMvc
+                .perform(get("/api/v1/empresas"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void empresasSemPermissaoRetornaProibido() throws Exception {
+        mockMvc
+                .perform(
+                        get("/api/v1/empresas")
+                                .with(jwt().jwt(token -> token.claim(
+                                        "tenant_id", TENANT_ID.toString())))
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void empresasComPermissaoRetornaApenasDadosDoTenantDoToken()
+            throws Exception {
+        String response = mockMvc
+                .perform(
+                        get("/api/v1/empresas")
+                                .with(jwt()
+                                        .jwt(token -> token.claim(
+                                                "tenant_id", TENANT_ID.toString()))
+                                        .authorities(
+                                                new SimpleGrantedAuthority(
+                                                        "empresa:ler")))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode empresas = objectMapper.readTree(response);
+
+        assertThat(empresas.isArray()).isTrue();
+        assertThat(empresas.size()).isGreaterThan(0);
+        for (JsonNode empresa : empresas) {
+            assertThat(empresa.path("tenantId").asText())
+                    .isEqualTo(TENANT_ID.toString());
+            assertThat(empresa.path("id").asText())
+                    .isNotEqualTo(EMPRESA_OUTRO_TENANT_ID.toString());
+        }
     }
 
     @Test
