@@ -24,10 +24,10 @@ public class Empresa {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
-    @Column(name = "razao.social", nullable = false, length = 200)
+    @Column(name = "razao_social", nullable = false, length = 200)
     private String razaoSocial;
 
-    @Column(name = "nome.fantasia",length = 200)
+    @Column(name = "nome_fantasia", length = 200)
     private String nomeFantasia;
 
     @Column(length = 14)
