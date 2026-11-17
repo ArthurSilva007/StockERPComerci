@@ -325,6 +325,186 @@ class AuthLoginIntegrationTest {
     }
 
     @Test
+    void criarEmpresaSemJwtRetornaNaoAutorizado() throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/empresas")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "razaoSocial": "Empresa Sem Token LTDA",
+                                          "nomeFantasia": "Empresa Sem Token",
+                                          "cnpj": "11111111000111"
+                                        }
+                                        """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void criarEmpresaSemPermissaoRetornaProibido() throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/empresas")
+                                .with(jwt().jwt(token -> token.claim(
+                                        "tenant_id", TENANT_ID.toString())))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "razaoSocial": "Empresa Sem Permissao LTDA",
+                                          "nomeFantasia": "Empresa Sem Permissao",
+                                          "cnpj": "11111111000111"
+                                        }
+                                        """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void criarEmpresaUsaTenantDoTokenEIgnoraTenantDoPayload()
+            throws Exception {
+        String response = mockMvc
+                .perform(
+                        post("/api/v1/empresas")
+                                .with(jwt()
+                                        .jwt(token -> token.claim(
+                                                "tenant_id", TENANT_ID.toString()))
+                                        .authorities(
+                                                new SimpleGrantedAuthority(
+                                                        "empresa:criar")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "tenantId": "%s",
+                                          "razaoSocial": "Empresa Criada Teste LTDA",
+                                          "nomeFantasia": "Empresa Criada Teste",
+                                          "cnpj": "11111111000111"
+                                        }
+                                        """.formatted(OUTRO_TENANT_ID)))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode empresa = objectMapper.readTree(response);
+
+        assertThat(empresa.path("tenantId").asText())
+                .isEqualTo(TENANT_ID.toString());
+        assertThat(empresa.path("razaoSocial").asText())
+                .isEqualTo("Empresa Criada Teste LTDA");
+
+        Integer quantidade = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM empresa WHERE tenant_id = ? AND cnpj = ?",
+                Integer.class,
+                TENANT_ID,
+                "11111111000111"
+        );
+
+        assertThat(quantidade).isEqualTo(1);
+    }
+
+    @Test
+    void criarEmpresaComDadosInvalidosRetornaBadRequest() throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/empresas")
+                                .with(jwt()
+                                        .jwt(token -> token.claim(
+                                                "tenant_id", TENANT_ID.toString()))
+                                        .authorities(
+                                                new SimpleGrantedAuthority(
+                                                        "empresa:criar")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "razaoSocial": "",
+                                          "nomeFantasia": "Empresa Invalida",
+                                          "cnpj": "cnpj-invalido"
+                                        }
+                                        """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void criarEmpresaComCnpjDuplicadoRetornaConflito() throws Exception {
+        mockMvc
+                .perform(
+                        post("/api/v1/empresas")
+                                .with(jwt()
+                                        .jwt(token -> token.claim(
+                                                "tenant_id", TENANT_ID.toString()))
+                                        .authorities(
+                                                new SimpleGrantedAuthority(
+                                                        "empresa:criar")))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "razaoSocial": "Empresa Duplicada LTDA",
+                                          "nomeFantasia": "Empresa Duplicada",
+                                          "cnpj": "12345678000195"
+                                        }
+                                        """))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void buscarEmpresaSemJwtRetornaNaoAutorizado() throws Exception {
+        mockMvc
+                .perform(get("/api/v1/empresas/{id}", EMPRESA_ID))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void buscarEmpresaSemPermissaoRetornaProibido() throws Exception {
+        mockMvc
+                .perform(
+                        get("/api/v1/empresas/{id}", EMPRESA_ID)
+                                .with(jwt().jwt(token -> token.claim(
+                                        "tenant_id", TENANT_ID.toString())))
+                )
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void buscarEmpresaDoTenantDoTokenRetornaEmpresa() throws Exception {
+        String response = mockMvc
+                .perform(
+                        get("/api/v1/empresas/{id}", EMPRESA_ID)
+                                .with(jwt()
+                                        .jwt(token -> token.claim(
+                                                "tenant_id", TENANT_ID.toString()))
+                                        .authorities(
+                                                new SimpleGrantedAuthority(
+                                                        "empresa:ler")))
+                )
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode empresa = objectMapper.readTree(response);
+
+        assertThat(empresa.path("id").asText())
+                .isEqualTo(EMPRESA_ID.toString());
+        assertThat(empresa.path("tenantId").asText())
+                .isEqualTo(TENANT_ID.toString());
+    }
+
+    @Test
+    void buscarEmpresaDeOutroTenantRetornaNaoEncontrado()
+            throws Exception {
+        mockMvc
+                .perform(
+                        get("/api/v1/empresas/{id}", EMPRESA_OUTRO_TENANT_ID)
+                                .with(jwt()
+                                        .jwt(token -> token.claim(
+                                                "tenant_id", TENANT_ID.toString()))
+                                        .authorities(
+                                                new SimpleGrantedAuthority(
+                                                        "empresa:ler")))
+                )
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void loginValidoRetornaJwtComTenantEPermissao()
             throws Exception {
         String body = """
