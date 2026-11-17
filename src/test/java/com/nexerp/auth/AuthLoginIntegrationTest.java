@@ -259,6 +259,21 @@ class AuthLoginIntegrationTest {
                 "empresa:ler",
                 agora()
         );
+
+
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO perfil_permissao (
+                    perfil_id, permissao_codigo, criado_em
+                )
+                VALUES (?, ?, ?)
+                ON CONFLICT (perfil_id, permissao_codigo) DO NOTHING
+                """,
+                PERFIL_ID,
+                "empresa:criar",
+                agora()
+        );
     }
 
     @Test
@@ -634,4 +649,7 @@ class AuthLoginIntegrationTest {
     private static Timestamp agora() {
         return Timestamp.from(Instant.now());
     }
+
+
+
 }
